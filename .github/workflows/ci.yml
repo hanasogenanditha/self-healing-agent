@@ -44,12 +44,8 @@ jobs:
           echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/self_healing_agent" >> $GITHUB_ENV
           echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> $GITHUB_ENV
 
-      - name: Install psql client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
-
-      - name: Enable pgvector extension
-        run: |
-          PGPASSWORD=postgres psql -h localhost -U postgres -d self_healing_agent -c "CREATE EXTENSION IF NOT EXISTS vector;"
+      - name: Initialize database schema
+        run: python -c "from memory.vector_store import init_db; init_db()"
 
       - name: Run memory tests (auto-answer prompts)
         run: |
