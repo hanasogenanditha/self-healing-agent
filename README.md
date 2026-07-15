@@ -32,29 +32,20 @@ Orchestrated with \*\*LangGraph\*\* as a stateful graph: `check\_memory → gene
 
 ```mermaid
 flowchart TD
-    A[POST /solve] --> B[check_memory]
-    B -->|similar problem found| C[generate]
-    B -->|no match| C
-    C --> D[execute in Docker sandbox]
-    D -->|success| E[store_solution]
-    D -->|failure, attempts remain| F[analyze error]
+    A[POST /solve] --> B[Check Memory]
+    B --> C[Generate Code]
+    C --> D[Execute in Docker Sandbox]
+    D -->|Success| E[Store Solution]
+    D -->|Failure, retries left| F[Analyze Error]
     F --> C
-    D -->|failure, max attempts reached| G[return error]
-    E --> H[return solution]
+    D -->|Max attempts reached| G[Return Error]
+    E --> H[Return Solution]
 
-    B -.-> M[(Postgres + pgvector memory store)]
+    B -.-> M[(Postgres + pgvector)]
     E -.-> M
-    D -.-> S[Docker Sandbox: isolated, no network, capped resources]
-
-    subgraph Observability
-        P[Prometheus] -->|scrapes /metrics| API[FastAPI]
-        G2[Grafana] -->|queries| P
-    end
-
-    API -.-> B
 ```
 
-
+**Observability:** Prometheus scrapes `/metrics` from the FastAPI service and Grafana visualizes it (latency, retries, memory hit rate, sandbox execution time/failures).
 
 \## Architecture
 
