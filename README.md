@@ -28,54 +28,30 @@ Orchestrated with \*\*LangGraph\*\* as a stateful graph: `check\_memory → gene
 
 
 
-\## Architecture Diagram
-
-
+## Architecture Diagram
 
 ```mermaid
-
 flowchart TD
+    A[POST /solve] --> B[check_memory]
+    B -->|similar problem found| C[generate]
+    B -->|no match| C
+    C --> D[execute in Docker sandbox]
+    D -->|success| E[store_solution]
+    D -->|failure, attempts remain| F[analyze error]
+    F --> C
+    D -->|failure, max attempts reached| G[return error]
+    E --> H[return solution]
 
-&#x20;   A\[POST /solve] --> B\[check\_memory]
+    B -.-> M[(Postgres + pgvector memory store)]
+    E -.-> M
+    D -.-> S[Docker Sandbox: isolated, no network, capped resources]
 
-&#x20;   B -->|similar problem found| C\[generate]
+    subgraph Observability
+        P[Prometheus] -->|scrapes /metrics| API[FastAPI]
+        G2[Grafana] -->|queries| P
+    end
 
-&#x20;   B -->|no match| C
-
-&#x20;   C --> D\[execute in Docker sandbox]
-
-&#x20;   D -->|success| E\[store\_solution]
-
-&#x20;   D -->|failure, attempts remain| F\[analyze error]
-
-&#x20;   F --> C
-
-&#x20;   D -->|failure, max attempts reached| G\[return error]
-
-&#x20;   E --> H\[return solution]
-
-
-
-&#x20;   B -.-> M\[(Postgres + pgvector<br/>memory store)]
-
-&#x20;   E -.-> M
-
-&#x20;   D -.-> S\[Docker Sandbox<br/>isolated, no network, capped resources]
-
-
-
-&#x20;   subgraph Observability
-
-&#x20;       P\[Prometheus] -->|scrapes /metrics| API\[FastAPI]
-
-&#x20;       G2\[Grafana] -->|queries| P
-
-&#x20;   end
-
-
-
-&#x20;   API -.-> B
-
+    API -.-> B
 ```
 
 
