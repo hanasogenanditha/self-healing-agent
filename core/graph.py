@@ -13,6 +13,7 @@ from core.state import AgentState
 from core.sandbox import run_code, SandboxError
 from agents.code_generator import generate, analyze_error, GenerationError
 from memory.vector_store import find_similar_solution, store_solution, MemoryStoreError
+from core.metrics import MEMORY_HITS, MEMORY_MISSES, RETRY_COUNT
 
 
 def check_memory_node(state: AgentState) -> AgentState:
@@ -25,10 +26,13 @@ def check_memory_node(state: AgentState) -> AgentState:
     print(f"[check_memory] match={'yes, sim=' + f'{match.similarity:.3f}' if match else 'no'}")
 
     if match:
+        MEMORY_HITS.inc()
         state.from_memory = True
         state.memory_context = (
             f"Problem: {match.problem}\nSolution:\n{match.code}\nExplanation: {match.explanation}"
         )
+    else:
+        MEMORY_MISSES.inc()
     return state
 
 
@@ -73,6 +77,7 @@ def should_continue(state: AgentState) -> str:
         return "store"
     if state.attempt >= state.max_attempts:
         return "end"
+    RETRY_COUNT.inc()
     return "analyze"
 
 

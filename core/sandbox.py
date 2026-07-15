@@ -14,6 +14,9 @@ import tarfile
 import docker
 from docker.errors import DockerException, ImageNotFound
 
+import time
+from core.metrics import SANDBOX_EXECUTION_TIME, SANDBOX_FAILURES
+
 _IMAGE = "python:3.11-slim"
 _TIMEOUT_SECONDS = 10
 _MEM_LIMIT = "256m"
@@ -46,18 +49,12 @@ def _build_tar_with_code(code: str) -> bytes:
 
 
 def run_code(code: str) -> tuple[str, str, bool]:
-    """
-    Executes `code` inside an isolated Docker container.
-
-    Returns:
-        (stdout, stderr, success)
-    """
     if not code or not code.strip():
         raise SandboxError("No code provided to execute.")
 
+    start_time = time.monotonic()
     client = _get_docker_client()
 
-    # Make sure the image exists locally (pulls once, reuses after)
     try:
         client.images.get(_IMAGE)
     except ImageNotFound:
@@ -82,13 +79,8 @@ def run_code(code: str) -> tuple[str, str, bool]:
             detach=True,
         )
 
-        # Container needs the /sandbox dir to exist before we can copy into it.
-        # Easiest fix: start it first with a no-op-safe command won't work since
-        # command is fixed at create time, so instead we create the dir via
-        # put_archive's target path — Docker creates intermediate dirs for us.
         tar_bytes = _build_tar_with_code(code)
         container.put_archive(path="/", data=_wrap_in_sandbox_dir(tar_bytes))
-
         container.start()
 
         try:
@@ -96,7 +88,6 @@ def run_code(code: str) -> tuple[str, str, bool]:
             exit_code = result.get("StatusCode", 1)
             timed_out = False
         except Exception:
-            # docker SDK raises requests.exceptions.ReadTimeout on wait() timeout
             container.kill()
             exit_code = None
             timed_out = True
@@ -107,20 +98,25 @@ def run_code(code: str) -> tuple[str, str, bool]:
         if timed_out:
             success = False
             stderr = stderr + "\n[Execution timed out after {}s]".format(_TIMEOUT_SECONDS)
+            SANDBOX_FAILURES.labels(reason="timeout").inc()
         else:
             success = (exit_code == 0)
+            if not success:
+                SANDBOX_FAILURES.labels(reason="nonzero_exit").inc()
 
         return stdout, stderr, success
 
     except DockerException as e:
+        SANDBOX_FAILURES.labels(reason="infra_error").inc()
         raise SandboxError(f"Docker execution failed: {e}") from e
 
     finally:
+        SANDBOX_EXECUTION_TIME.observe(time.monotonic() - start_time)
         if container is not None:
             try:
                 container.remove(force=True)
             except DockerException:
-                pass  # best-effort cleanup
+                pass
 
 
 def _wrap_in_sandbox_dir(gen_code_tar_bytes: bytes) -> bytes:

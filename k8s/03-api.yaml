@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: self-healing-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      containers:
+        - name: api
+          image: self_healing_agent-api:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              value: "postgresql://postgres:postgres@postgres:5432/self_healing_agent"
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: self-healing-secrets
+                  key: GEMINI_API_KEY
+          volumeMounts:
+            - name: docker-socket
+              mountPath: /var/run/docker.sock
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: docker-socket
+          hostPath:
+            path: /var/run/docker.sock
+            type: Socket
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: self-healing-agent
+spec:
+  selector:
+    app: api
+  ports:
+    - port: 8000
+      targetPort: 8000
+  type: NodePort
